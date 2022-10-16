@@ -143,6 +143,59 @@ content = ""Something to import.""
     }
 
     [Test]
+    public async Task TestRestoreStateFile()
+    {
+        using var terraform = await _host.CreateTerraformTestInstanceAsync(ProviderName);
+
+        var resourceAddress = $"{ProviderName}_file.imported";
+
+        var resourcePath = Path.Combine(terraform.WorkDir, "file.tf");
+        var statePath = Path.Combine(terraform.WorkDir, "terraform.tfstate");
+        var testFilePath = Path.Combine(terraform.WorkDir, "test.txt");
+        var fileContent = "this is a test";
+
+        await File.WriteAllTextAsync(testFilePath, fileContent);
+
+        await File.WriteAllTextAsync(resourcePath, $@"
+resource ""{ProviderName}_file"" ""demo_file"" {{
+path = ""{testFilePath.Replace("\\", "\\\\")}""
+content = ""{fileContent}""
+}}
+");
+
+        await File.WriteAllTextAsync(statePath, $@"{{
+  ""version"": 4,
+  ""terraform_version"": ""1.2.9"",
+  ""serial"": 1,
+  ""lineage"": ""4fb0d19c-6a30-3b7b-14e4-d6cfffe29476"",
+  ""outputs"": {{}},
+  ""resources"": [
+    {{
+      ""mode"": ""managed"",
+      ""type"": ""{ProviderName}_file"",
+      ""name"": ""demo_file"",
+      ""provider"": ""provider[\""example.com/example/{ProviderName}\""]"",
+      ""instances"": [
+        {{
+          ""schema_version"": 1,
+          ""attributes"": {{
+            ""content"": ""this is a test"",
+            ""id"": ""c61bd5d3-caf9-47b3-95c4-f508263e5a24"",
+            ""path"": ""{terraform.WorkDir.Replace("\\", "\\\\")}\\test.txt""
+          }},
+          ""sensitive_attributes"": []
+        }}
+      ]
+    }}
+  ]
+}}
+");
+
+        var changes = await terraform.PlanWithOutputAsync();
+        Assert.That(changes.ResourceChanges.SelectMany(x => x.Change.Actions).All(x => x == "no-op"), Is.True);
+    }
+
+    [Test]
     public async Task TestConfigureFileHeader()
     {
         using var terraform = await _host.CreateTerraformTestInstanceAsync(ProviderName, configureProvider: false);
