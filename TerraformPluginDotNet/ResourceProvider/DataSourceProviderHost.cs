@@ -19,14 +19,19 @@ class DataSourceProviderHost<T>
     public async Task<ReadDataSource.Types.Response> ReadDataSource(ReadDataSource.Types.Request request)
     {
         var current = DeserializeDynamicValue(request.Config);
+        var context = new TerraformContext();
 
-        var read = await _dataSourceProvider.ReadAsync(current);
+        var read = await _dataSourceProvider.ReadAsync(current, context);
         var readSerialized = SerializeDynamicValue(read);
 
-        return new ReadDataSource.Types.Response
+        var response = new ReadDataSource.Types.Response
         {
             State = readSerialized,
         };
+
+        response.Diagnostics.AddRange(context.Diagnostics);
+
+        return response;
     }
 
     private T DeserializeDynamicValue(DynamicValue value)

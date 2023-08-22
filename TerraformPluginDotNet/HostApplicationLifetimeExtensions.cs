@@ -19,7 +19,7 @@ public static class HostApplicationLifetimeExtensions
             if (pluginHostOptions.Value.DebugMode)
             {
                 Console.WriteLine("Debug mode enabled (no certificate). Run Terraform with the following environment variable set:");
-                Console.WriteLine($@"TF_REATTACH_PROVIDERS={{""{pluginHostOptions.Value.FullProviderName}"":{{""Protocol"":""grpc"",""Pid"":{Environment.ProcessId},""Test"":true,""Addr"":{{""Network"":""tcp"",""String"":""{host}:{serverUri.Port}""}}}}}}");
+                Console.WriteLine($@"TF_REATTACH_PROVIDERS='{{""{pluginHostOptions.Value.FullProviderName}"":{{""Protocol"":""grpc"",""Pid"":{Environment.ProcessId},""Test"":true,""Addr"":{{""Network"":""tcp"",""String"":""{host}:{serverUri.Port}""}}}}}}'");
             }
             else
             {

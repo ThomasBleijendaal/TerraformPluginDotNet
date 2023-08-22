@@ -13,7 +13,18 @@ namespace TerraformPluginDotNet;
 /// </summary>
 public static class TerraformPluginHost
 {
-    public static async Task RunAsync(string[] args, string fullProviderName, Action<IServiceCollection, IResourceRegistryContext> configure, CancellationToken token = default)
+    public static Task RunAsync(
+        string[] args,
+        string fullProviderName,
+        Action<IServiceCollection, IResourceRegistryContext> configure,
+        CancellationToken token = default)
+    {
+        return RunAsync(CreateHostBuilder(args, fullProviderName, configure), token);
+    }
+
+    public static async Task RunAsync(
+        IHostBuilder builder,
+        CancellationToken token = default)
     {
         var serilogConfiguration = new ConfigurationBuilder()
             .AddJsonFile("serilog.json", optional: true)
@@ -25,7 +36,7 @@ public static class TerraformPluginHost
 
         try
         {
-            await CreateHostBuilder(args, fullProviderName, configure).Build().RunAsync(token);
+            await builder.Build().RunAsync(token);
         }
         catch (Exception ex)
         {
@@ -38,38 +49,45 @@ public static class TerraformPluginHost
         }
     }
 
+    public static ITerraformPluginHostBuilder CreateHostBuilder(
+        string[] args,
+        string fullProviderName)
+    {
+        return new TerraformPluginHostBuilder(
+            Host.CreateDefaultBuilder(args)
+                .ConfigureAppConfiguration(configuration =>
+                {
+                    configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "serilog.json"), optional: true);
+                    configuration.AddJsonFile("serilog.json", optional: true);
+                })
+                .ConfigureServices((host, services) =>
+                {
+                    services.Configure<TerraformPluginHostOptions>(host.Configuration);
+                    services.Configure<TerraformPluginHostOptions>(x => x.FullProviderName = fullProviderName);
+                    services.AddSingleton(new PluginHostCertificate(
+                        Certificate: CertificateGenerator.GenerateSelfSignedCertificate("CN=127.0.0.1", "CN=root ca", CertificateGenerator.GeneratePrivateKey())));
+                })
+                .UseSerilog((context, services, configuration) =>
+                {
+                    configuration
+                        .ReadFrom.Configuration(context.Configuration)
+                        .ReadFrom.Services(services)
+                        .Enrich.FromLogContext();
+
+                    // Only write to console in debug mode because Terraform reads connection details from stdout.
+                    if (services.GetRequiredService<IOptions<TerraformPluginHostOptions>>().Value.DebugMode)
+                    {
+                        configuration.WriteTo.Console();
+                    }
+                }));
+    }
+
     public static IHostBuilder CreateHostBuilder(
         string[] args,
         string fullProviderName,
-        Action<IServiceCollection, IResourceRegistryContext> configure) =>
-        Host.CreateDefaultBuilder(args)
-            .ConfigureAppConfiguration(configuration =>
-            {
-                configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "serilog.json"), optional: true);
-                configuration.AddJsonFile("serilog.json", optional: true);
-            })
-            .ConfigureServices((host, services) =>
-            {
-                services.Configure<TerraformPluginHostOptions>(host.Configuration);
-                services.Configure<TerraformPluginHostOptions>(x => x.FullProviderName = fullProviderName);
-                services.AddSingleton(new PluginHostCertificate(
-                    Certificate: CertificateGenerator.GenerateSelfSignedCertificate("CN=127.0.0.1", "CN=root ca", CertificateGenerator.GeneratePrivateKey())));
-            })
-            .ConfigureWebHostDefaults(webBuilder =>
-            {
-                webBuilder.ConfigureTerraformPlugin(configure);
-            })
-            .UseSerilog((context, services, configuration) =>
-            {
-                configuration
-                      .ReadFrom.Configuration(context.Configuration)
-                      .ReadFrom.Services(services)
-                      .Enrich.FromLogContext();
-
-                // Only write to console in debug mode because Terraform reads connection details from stdout.
-                if (services.GetRequiredService<IOptions<TerraformPluginHostOptions>>().Value.DebugMode)
-                {
-                    configuration.WriteTo.Console();
-                }
-            });
+        Action<IServiceCollection, IResourceRegistryContext> configure)
+    {
+        return CreateHostBuilder(args, fullProviderName)
+            .ConfigureResourceRegistry(configure);
+    }
 }
